@@ -860,38 +860,43 @@
       calculateLiveScore();
     }
 
-    // Live score calculation - supporting partial evaluations dynamically
-    function calculateLiveScore() {
-      let totalAssessed = 0;
-      let totalYes = 0;
+   // ปรับแก้เฉพาะฟังก์ชัน calculateLiveScore
+function calculateLiveScore() {
+  let totalAssessed = 0;
+  let totalYes = 0;
 
-      for (let key in currentRecord.items) {
-        if (currentRecord.items[key] !== null) {
-          totalAssessed++;
-          if (currentRecord.items[key] === 'ปฏิบัติ') {
-            totalYes++;
-          }
-        }
-      }
-
-      const score = totalAssessed > 0 ? Math.round((totalYes / totalAssessed) * 100) : 0;
-      currentRecord.complianceRate = score;
-
-      document.getElementById('liveScoreText').innerText = `${score}%`;
-      const ring = document.getElementById('scoreIndicatorRing');
-      ring.innerText = `${totalYes}/${totalAssessed > 0 ? totalAssessed : 8}`;
-
-      // Colorize the ring & badge (Pink Accent scale)
-      if (score === 100 && totalAssessed > 0) {
-        ring.className = "w-10 h-10 rounded-full border-2 border-pink-300 bg-pink-700 flex items-center justify-center font-bold text-sm text-white shadow-md shadow-pink-200";
-      } else if (score >= 80 && totalAssessed > 0) {
-        ring.className = "w-10 h-10 rounded-full border-2 border-rose-300 bg-rose-600 flex items-center justify-center font-bold text-sm text-white";
-      } else if (score > 0 && totalAssessed > 0) {
-        ring.className = "w-10 h-10 rounded-full border-2 border-amber-300 bg-amber-600 flex items-center justify-center font-bold text-sm text-white";
-      } else {
-        ring.className = "w-10 h-10 rounded-full border-2 border-slate-300 flex items-center justify-center font-bold text-sm";
+  for (let key in currentRecord.items) {
+    if (currentRecord.items[key] !== null) {
+      totalAssessed++;
+      if (currentRecord.items[key] === 'ปฏิบัติ') {
+        totalYes++;
       }
     }
+  }
+
+  // คำนวณเปอร์เซ็นต์โดยใช้ฐาน 8 ตามที่คุณต้องการ
+  // (หากต้องการให้คิด 100% ต่อเมื่อครบ 8 ข้อ ให้ใช้ totalAssessed เป็นตัวหาร แต่ถ้าต้องการให้เป็นคะแนนจาก 8 ข้อเสมอ ให้ใช้ 8)
+  const score = Math.round((totalYes / 8) * 100); 
+  currentRecord.complianceRate = score;
+
+  document.getElementById('liveScoreText').innerText = `${score}%`;
+  const ring = document.getElementById('scoreIndicatorRing');
+  
+  // ปรับการแสดงผลเลขตรงกลางเป็น [จำนวนที่ปฏิบัติ] / 8
+  ring.innerText = `${totalYes}/8`;
+
+  // Colorize the ring & badge (Pink Accent scale)
+  // ... (ส่วนโค้ดการเปลี่ยนสีที่เหลือคงเดิม) ...
+  if (score === 100 && totalYes === 8) {
+    ring.className = "w-10 h-10 rounded-full border-2 border-pink-300 bg-pink-700 flex items-center justify-center font-bold text-sm text-white shadow-md shadow-pink-200";
+  } else if (score >= 80 && totalYes > 0) {
+    ring.className = "w-10 h-10 rounded-full border-2 border-rose-300 bg-rose-600 flex items-center justify-center font-bold text-sm text-white";
+  } else if (score > 0 && totalYes > 0) {
+    ring.className = "w-10 h-10 rounded-full border-2 border-amber-300 bg-amber-600 flex items-center justify-center font-bold text-sm text-white";
+  } else {
+    ring.className = "w-10 h-10 rounded-full border-2 border-slate-300 flex items-center justify-center font-bold text-sm";
+  }
+}
 
     // Sync state badge
     function updateStatusBadge() {

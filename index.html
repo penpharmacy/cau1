@@ -678,64 +678,54 @@
   <!-- JAVASCRIPT LOGIC -->
   <script>
     // ==========================================
-    // ⚙️ ตัวตั้งค่าส่วนกลางสำหรับการส่งข้อมูลอัตโนมัติ (GLOBAL CONFIGURATION)
+    // ⚙️ ตัวตั้งค่าส่วนกลาง
     // ==========================================
-    // นำ URL ของ Google Apps Script ที่ Deploy เสร็จแล้วมาใส่ในฟันหนูนี้ (แทนที่ "" ว่างด้านล่าง)
-    // เพื่อให้ทุกเครื่องที่เปิดลิงก์เว็บประเมินนี้ สามารถส่งข้อมูลเข้า Google Sheets ได้ทันทีโดยไม่ต้องตั้งค่าทีละเครื่อง!
     const GLOBAL_DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbxu25AyFLUlqiKsK4h6kH4qPuyeXrGliMaacUrXFx0Ya6yZEvPjd6hMYTSqfvA2KjYy/exec"; 
 
-    // State Management
     let db = {
       records: JSON.parse(localStorage.getItem('cauti_records')) || [],
       apiUrl: localStorage.getItem('cauti_api_url') || GLOBAL_DEFAULT_API_URL
     };
 
-    // Chart global variable instances
     let comparisonChartInstance = null;
     let trendChartInstance = null;
-
-    // Current filter parameters
     let currentFilterType = 'all';
-
-    // Current record in creation
-    let currentRecord = {
-      id: '',
-      date: '',
-      items: {
-        1: null,
-        2: null,
-        3: null,
-        4: null,
-        5: null,
-        6: null,
-        7: null,
-        8: null
-      },
-      complianceRate: 0,
-      remarks: '',
-      synced: false,
-      timestamp: null
-    };
-
-    // Callback store for Custom Confirmation Modal
+    let currentRecord = { id: '', date: '', items: { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null, 7: null, 8: null }, complianceRate: 0, remarks: '', synced: false, timestamp: null };
     let activeConfirmCallback = null;
+
+    // ==========================================
+    // ฟังก์ชันดึงข้อมูลอัตโนมัติ (เพิ่มใหม่)
+    // ==========================================
+    async function fetchDataFromSheet() {
+      if (!db.apiUrl) return;
+      try {
+        // ดึงข้อมูลผ่าน GET (ต้องแน่ใจว่า GAS ของคุณตอบรับ GET request)
+        const response = await fetch(db.apiUrl + "?action=fetch", { method: 'GET' });
+        const data = await response.json();
+        if (data && Array.isArray(data)) {
+            db.records = data;
+            localStorage.setItem('cauti_records', JSON.stringify(db.records));
+            renderHistory();
+            renderReports();
+            console.log("อัปเดตข้อมูลจาก Google Sheets เรียบร้อย");
+        }
+      } catch (err) {
+        console.error("ไม่สามารถดึงข้อมูลอัตโนมัติได้:", err);
+      }
+    }
 
     // Initial load
     window.onload = function() {
-      // Setup current Date input
       const today = new Date().toISOString().split('T')[0];
       document.getElementById('evalDate').value = today;
       currentRecord.date = today;
-
-      // Populate default filter values
-      document.getElementById('filterMonthVal').value = today.slice(0, 7); // Default current month YYYY-MM
+      document.getElementById('filterMonthVal').value = today.slice(0, 7);
       document.getElementById('filterStartVal').value = today;
       document.getElementById('filterEndVal').value = today;
+      if (db.apiUrl) document.getElementById('apiEndpointUrl').value = db.apiUrl;
 
-      // Populate API URL from state/cache
-      if (db.apiUrl) {
-        document.getElementById('apiEndpointUrl').value = db.apiUrl;
-      }
+      // เรียกฟังก์ชันดึงข้อมูลทันทีเมื่อเปิดหน้าเว็บ
+      fetchDataFromSheet();
 
       updateUnsyncedBadge();
       updateStatusBadge();

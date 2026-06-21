@@ -480,10 +480,10 @@
         </div>
       </div>
 
-      <!-- MAIN CHARTS ROW (Updated to Pink Tone) -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- MAIN CHARTS ROW -->
+      <div class="grid grid-cols-1 gap-6">
         
-        <!-- Chart 1: Grouped Bar Chart -->
+        <!-- Chart 1: Grouped Bar Chart (full width) -->
         <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
           <div class="pb-3 mb-4 border-b border-slate-100 flex justify-between items-center">
             <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center space-x-2">
@@ -496,24 +496,6 @@
             <canvas id="comparisonChartCanvas" class="max-h-[380px]"></canvas>
             <div id="chart1EmptyState" class="absolute inset-0 bg-white/95 flex flex-col items-center justify-center text-slate-400 space-y-2 hidden">
               <svg class="w-12 h-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.003 9.003 0 1020.945 13H11V3.055z"></path></svg>
-              <p class="text-xs font-semibold">ไม่พบข้อมูลประเมินตามตัวกรองช่วงเวลาดังกล่าว</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Chart 2: Compliance Trend Line Chart (Vibrant Pink Tint) -->
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-          <div class="pb-3 mb-4 border-b border-slate-100 flex justify-between items-center">
-            <h3 class="font-bold text-slate-800 text-sm md:text-base flex items-center space-x-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-pink-400 animate-ping"></span>
-              <span>แนวโน้มความสอดคล้องตามเกณฑ์รายวัน (%)</span>
-            </h3>
-            <span class="text-[10px] bg-slate-100 px-2.5 py-1 rounded-full font-bold text-slate-500">ประวัติย้อนหลัง</span>
-          </div>
-          <div class="relative min-h-[350px] w-full flex items-center justify-center">
-            <canvas id="trendChartCanvas" class="max-h-[380px]"></canvas>
-            <div id="chart2EmptyState" class="absolute inset-0 bg-white/95 flex flex-col items-center justify-center text-slate-400 space-y-2 hidden">
-              <svg class="w-12 h-12 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
               <p class="text-xs font-semibold">ไม่พบข้อมูลประเมินตามตัวกรองช่วงเวลาดังกล่าว</p>
             </div>
           </div>
@@ -1583,7 +1565,6 @@ function calculateLiveScore() {
         
         // Show empty states on canvas cards
         document.getElementById('chart1EmptyState').classList.remove('hidden');
-        document.getElementById('chart2EmptyState').classList.remove('hidden');
 
         if (comparisonChartInstance) comparisonChartInstance.destroy();
         if (trendChartInstance) trendChartInstance.destroy();
@@ -1591,7 +1572,6 @@ function calculateLiveScore() {
       }
 
       document.getElementById('chart1EmptyState').classList.add('hidden');
-      document.getElementById('chart2EmptyState').classList.add('hidden');
 
       // 1. Calculate Summary Stats
       let sum = 0;
@@ -1757,92 +1737,11 @@ function calculateLiveScore() {
         }
       });
 
-      // 4. Render CHART 2: Compliance Trend Line Chart (Vibrant Pink Line Series)
-      const trendDataMap = {};
-      records.forEach(r => {
-        if (!trendDataMap[r.date]) {
-          trendDataMap[r.date] = { sum: 0, count: 0 };
-        }
-        trendDataMap[r.date].sum += r.complianceRate;
-        trendDataMap[r.date].count++;
-      });
-
-      // Sort dates chronologically
-      const sortedDates = Object.keys(trendDataMap).sort();
-      const trendLabels = [];
-      const trendDataValues = [];
-
-      sortedDates.forEach(date => {
-        const parts = date.split('-');
-        const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parseInt(parts[0])+543 - 2500}` : date; // พ.ศ. สั้น 
-        trendLabels.push(formattedDate);
-        trendDataValues.push(Math.round(trendDataMap[date].sum / trendDataMap[date].count));
-      });
-
-      const ctxTrend = document.getElementById('trendChartCanvas').getContext('2d');
-      if (trendChartInstance) {
-        trendChartInstance.destroy();
-      }
-
-      trendChartInstance = new Chart(ctxTrend, {
-        type: 'line',
-        data: {
-          labels: trendLabels,
-          datasets: [{
-            label: 'ร้อยละการปฏิบัติตามมาตรฐานเฉลี่ย',
-            data: trendDataValues,
-            fill: true,
-            backgroundColor: 'rgba(219, 39, 119, 0.12)', // Subtle light pink fill
-            borderColor: 'rgba(219, 39, 119, 1)', // Hot pink stroke
-            borderWidth: 3,
-            tension: 0.35,
-            pointBackgroundColor: 'rgba(190, 24, 93, 1)', // Deeper pink points
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 2,
-            pointRadius: 5,
-            pointHoverRadius: 7
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true,
-              max: 100,
-              ticks: {
-                callback: function(value) { return value + '%'; },
-                font: { family: 'Prompt', size: 11 }
-              }
-            },
-            x: {
-              ticks: {
-                font: { family: 'Prompt', size: 10 }
-              }
-            }
-          },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: { font: { family: 'Prompt', size: 11 } }
-            },
-            tooltip: {
-              titleFont: { family: 'Prompt', size: 12 },
-              bodyFont: { family: 'Prompt', size: 11 },
-              callbacks: {
-                label: function(context) {
-                  return ` ความสอดคล้องเฉลี่ย: ${context.raw}%`;
-                }
-              }
-            },
-            datalabels: {
-              display: false // Turn off datalabels for trendline chart to keep it clean
-            }
-          }
-        }
-      });
+      // ซ่อน chart2EmptyState ที่ไม่มีใน DOM แล้ว (ลบกราฟแนวโน้มออก)
+      if (trendChartInstance) { trendChartInstance.destroy(); trendChartInstance = null; }
     }
 
   </script>
 </body>
 </html>
+

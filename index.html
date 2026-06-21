@@ -392,12 +392,12 @@
             <span class="w-3 h-6 bg-pink-600 rounded"></span>
             <span>Dashboard สรุปผลลัพธ์และสถิติภาพรวม</span>
           </h2>
-          <p class="text-xs text-slate-500">ข้อมูลอัปเดตแบบเรียลไทม์จากบันทึกในเครื่องและวิเคราะห์สัดส่วนรายข้อ</p>
+          <p class="text-xs text-slate-500" id="dashboardLastUpdated">ดึงข้อมูลจาก Google Sheets อัตโนมัติ</p>
         </div>
         <div class="flex items-center space-x-2 w-full sm:w-auto">
-         <button onclick="generateDemoData()" class="hidden" "flex-1 sm:flex-initial px-4 py-2 text-xs font-bold bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 rounded-xl transition-all flex items-center justify-center space-x-1">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-            <span class="hidden">ทดสอบด้วยข้อมูลจำลอง</span>
+          <button onclick="fetchAndRenderReports()" id="btnRefreshDashboard" class="flex-1 sm:flex-initial px-4 py-2 text-xs font-bold bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 rounded-xl transition-all flex items-center justify-center space-x-1">
+            <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17"></path></svg>
+            <span>รีเฟรชจาก Sheets</span>
           </button>
           <button onclick="confirmClearAllData()" class="flex-1 sm:flex-initial px-4 py-2 text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl transition-all flex items-center justify-center space-x-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -694,23 +694,139 @@
     let activeConfirmCallback = null;
 
     // ==========================================
-    // ฟังก์ชันดึงข้อมูลอัตโนมัติ (เพิ่มใหม่)
+    // ฟังก์ชันดึงข้อมูลผ่าน Google Apps Script (ไม่มีปัญหา CORS)
+    // GAS doGet ส่ง raw 2D array กลับมา
+    // Columns: [0]=Timestamp, [1]=date, [2]=item1...[9]=item8, [10]=rate%, [11]=remarks
     // ==========================================
     async function fetchDataFromSheet() {
-      if (!db.apiUrl) return;
       try {
-        // ดึงข้อมูลผ่าน GET (ต้องแน่ใจว่า GAS ของคุณตอบรับ GET request)
-        const response = await fetch(db.apiUrl + "?action=fetch", { method: 'GET' });
-        const data = await response.json();
-        if (data && Array.isArray(data)) {
-            db.records = data;
-            localStorage.setItem('cauti_records', JSON.stringify(db.records));
-            renderHistory();
-            renderReports();
-            console.log("อัปเดตข้อมูลจาก Google Sheets เรียบร้อย");
+        const url = db.apiUrl + '?action=fetch';
+        const response = await fetch(url, { method: 'GET' });
+        const raw = await response.json();
+
+        // raw คือ Array of Arrays (2D) จาก sheet.getDataRange().getValues()
+        if (!Array.isArray(raw) || raw.length < 2) return false;
+
+        const sheetRecords = [];
+        // เริ่มจาก index 1 เพื่อข้าม header row
+        for (let i = 1; i < raw.length; i++) {
+          const row = raw[i];
+          if (!row[1]) continue; // ข้ามแถวที่ไม่มีวันที่
+
+          // แปลง date — GAS ส่งมาเป็น string "2026-06-20" หรือ Date object
+          let dateVal = String(row[1]).slice(0, 10);
+          // กรณี GAS ส่ง Date object มาเป็น string แบบ "Sat Jun 21 2026..."
+          if (dateVal.length > 10 || isNaN(Date.parse(dateVal))) {
+            const d = new Date(row[1]);
+            if (!isNaN(d)) {
+              dateVal = d.toISOString().slice(0, 10);
+            }
+          }
+
+          // แปลง complianceRate: GAS บันทึกเป็น 0.88 (เพราะ setNumberFormat "0%")
+          let rate = parseFloat(row[10]) || 0;
+          if (rate > 0 && rate <= 1) rate = Math.round(rate * 100);
+          else rate = Math.round(rate);
+
+          // แปลงค่า item — อาจเป็น "" หรือ null ถ้าไม่ได้กรอก
+          const getItem = (val) => {
+            const s = String(val || '').trim();
+            return (s === 'ปฏิบัติ' || s === 'ไม่ปฏิบัติ') ? s : null;
+          };
+
+          sheetRecords.push({
+            id: `SHEET_${i}_${dateVal}`,
+            date: dateVal,
+            timestamp: String(row[0]),
+            items: {
+              1: getItem(row[2]),
+              2: getItem(row[3]),
+              3: getItem(row[4]),
+              4: getItem(row[5]),
+              5: getItem(row[6]),
+              6: getItem(row[7]),
+              7: getItem(row[8]),
+              8: getItem(row[9]),
+            },
+            complianceRate: rate,
+            remarks: String(row[11] || ''),
+            synced: true
+          });
         }
+
+        if (sheetRecords.length === 0) return false;
+
+        // รวมกับ local records ที่ยังไม่ได้ sync
+        const localUnsynced = db.records.filter(r => !r.synced);
+        db.records = [...sheetRecords, ...localUnsynced];
+        localStorage.setItem('cauti_records', JSON.stringify(db.records));
+
+        console.log(`✅ ดึงข้อมูลจาก GAS สำเร็จ: ${sheetRecords.length} รายการ`);
+        return true;
+
       } catch (err) {
-        console.error("ไม่สามารถดึงข้อมูลอัตโนมัติได้:", err);
+        console.error('❌ ดึงข้อมูลผ่าน GAS ไม่ได้:', err);
+        return false;
+      }
+    }
+
+    // ดึงข้อมูลจาก Google Sheet แล้ว render Dashboard พร้อม loading indicator
+    async function fetchAndRenderReports() {
+      // Spin refresh icon
+      const refreshIcon = document.getElementById('refreshIcon');
+      const refreshBtn = document.getElementById('btnRefreshDashboard');
+      if (refreshIcon) refreshIcon.classList.add('animate-spin');
+      if (refreshBtn) refreshBtn.disabled = true;
+
+      // แสดง loading bar ด้านบน dashboard
+      let loadingEl = document.getElementById('dashboardLoadingOverlay');
+      if (!loadingEl) {
+        loadingEl = document.createElement('div');
+        loadingEl.id = 'dashboardLoadingOverlay';
+        loadingEl.className = 'flex items-center justify-center py-6 space-x-3 text-pink-600 bg-pink-50 rounded-2xl border border-pink-100';
+        document.getElementById('tab-reports-content').prepend(loadingEl);
+      }
+      loadingEl.innerHTML = `
+        <svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <span class="font-semibold text-sm">กำลังดึงข้อมูลทั้งหมดจาก Google Sheets...</span>
+      `;
+      loadingEl.classList.remove('hidden');
+
+      // ล้าง db.records ก่อนดึงใหม่ (เพื่อให้ได้ข้อมูลจาก Sheet จริงๆ ไม่ใช่ cache)
+      const localUnsynced = db.records.filter(r => !r.synced);
+      db.records = [...localUnsynced];
+
+      // ดึงข้อมูลจาก Sheet (รอให้เสร็จก่อน)
+      const success = await fetchDataFromSheet();
+
+      // ซ่อน loading
+      loadingEl.classList.add('hidden');
+
+      // Stop spinning
+      if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+      if (refreshBtn) refreshBtn.disabled = false;
+
+      // Render ด้วยข้อมูลล่าสุดจาก Sheet
+      renderReports();
+      renderHistory();
+      updateUnsyncedBadge();
+
+      // อัปเดต timestamp และ status
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const lastUpdatedEl = document.getElementById('dashboardLastUpdated');
+
+      if (success) {
+        if (lastUpdatedEl) lastUpdatedEl.innerHTML = `<span class="text-emerald-600 font-semibold">✓ อัปเดตจาก Google Sheets แล้ว — ${timeStr} (${db.records.length} รายการ)</span>`;
+        const badge = document.getElementById('connectionBadge');
+        const prev = badge.innerHTML;
+        badge.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span><span class="hidden md:inline font-medium">อัปเดตแล้ว ✓</span>`;
+        setTimeout(() => { badge.innerHTML = prev; }, 3000);
+      } else {
+        if (lastUpdatedEl) lastUpdatedEl.innerHTML = `<span class="text-amber-600 font-semibold">⚠ ดึงข้อมูลจาก Sheets ไม่ได้ — แสดงข้อมูลใน localStorage แทน (ตรวจสอบว่า Sheet เป็น Public)</span>`;
       }
     }
 
@@ -724,8 +840,11 @@
       document.getElementById('filterEndVal').value = today;
       if (db.apiUrl) document.getElementById('apiEndpointUrl').value = db.apiUrl;
 
-      // เรียกฟังก์ชันดึงข้อมูลทันทีเมื่อเปิดหน้าเว็บ
-      fetchDataFromSheet();
+      // เรียกฟังก์ชันดึงข้อมูลทันทีเมื่อเปิดหน้าเว็บ (background)
+      fetchDataFromSheet().then(() => {
+        renderHistory();
+        renderReports();
+      });
 
       updateUnsyncedBadge();
       updateStatusBadge();
@@ -750,7 +869,8 @@
       if (tabName === 'history') {
         renderHistory();
       } else if (tabName === 'reports') {
-        renderReports();
+        // ดึงข้อมูลจาก Google Sheet อัตโนมัติทุกครั้งที่เปิด Dashboard
+        fetchAndRenderReports();
       }
     }
 
